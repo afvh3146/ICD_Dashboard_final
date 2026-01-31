@@ -4,14 +4,14 @@ import numpy as np
 import plotly.express as px
 
 # -------------------------
-# Config
+# Configuración
 # -------------------------
 st.set_page_config(page_title="EDA - Streamlit", layout="wide")
 st.title("📊 EDA en Streamlit (3 pestañas: Cuantitativo, Cualitativo y Gráfico)")
 st.caption("Carga un CSV, aplica filtros globales y explora el dataset con análisis dinámico.")
 
 # -------------------------
-# Sidebar: carga + opciones
+# Sidebar: carga de datos
 # -------------------------
 st.sidebar.header("1) Carga de datos")
 
@@ -34,6 +34,9 @@ if df is None:
     st.info("👈 Sube un CSV o agrega energia_renovable.csv al repositorio para iniciar.")
     st.stop()
 
+# -------------------------
+# Opciones
+# -------------------------
 st.sidebar.header("2) Opciones")
 auto_parse_dates = st.sidebar.checkbox("Intentar convertir columnas tipo fecha", value=True)
 
@@ -41,16 +44,17 @@ if auto_parse_dates:
     for col in df.columns:
         if df[col].dtype == "object":
             sample = df[col].dropna().astype(str).head(25)
+            # Heurística: detectar formato yyyy-mm-dd o yyyy/mm/dd
             if len(sample) > 0 and (sample.str.contains(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}", regex=True).mean() > 0.5):
                 df[col] = pd.to_datetime(df[col], errors="coerce")
 
-# Tipos
+# Tipos de columnas
 num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 cat_cols = df.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
 date_cols = df.select_dtypes(include=["datetime64[ns]"]).columns.tolist()
 
 # -------------------------
-# Vista general + tipos + faltantes
+# Vista general
 # -------------------------
 st.subheader("📌 Vista general")
 c1, c2, c3, c4 = st.columns(4)
@@ -65,13 +69,15 @@ with st.expander("Ver muestra (head)"):
 with st.expander("Tipos de datos"):
     st.dataframe(pd.DataFrame({"columna": df.columns, "dtype": df.dtypes.astype(str)}), use_container_width=True)
 
+# -------------------------
 # Faltantes
+# -------------------------
 missing = df.isna().sum().sort_values(ascending=False)
 missing_pct = (missing / len(df) * 100).round(2)
 missing_table = pd.DataFrame({"faltantes": missing, "faltantes_%": missing_pct})
 missing_table = missing_table[missing_table["faltantes"] > 0]
 
-with st.expander("Calidad de datos: faltantes"):
+with st.expander("Calidad de datos: valores faltantes"):
     if missing_table.empty:
         st.success("✅ No se encontraron valores faltantes (NaN).")
     else:
@@ -113,7 +119,7 @@ if len(cat_cols) > 0:
         if chosen:
             filtered_df = filtered_df[filtered_df[cat_filter_col].isin(chosen)]
 
-# Filtro por fecha (si existe)
+# Filtro por fecha
 if len(date_cols) > 0:
     date_filter_col = st.sidebar.selectbox("Filtrar por fecha", ["(ninguna)"] + date_cols)
     if date_filter_col != "(ninguna)":
@@ -135,7 +141,7 @@ if len(date_cols) > 0:
 st.sidebar.caption(f"Filtrado: {filtered_df.shape[0]} filas / {filtered_df.shape[1]} columnas")
 
 # -------------------------
-# Pestañas del EDA
+# Tabs
 # -------------------------
 tab1, tab2, tab3 = st.tabs(["1) Cuantitativo", "2) Cualitativo", "3) Gráfico"])
 
@@ -144,6 +150,7 @@ tab1, tab2, tab3 = st.tabs(["1) Cuantitativo", "2) Cualitativo", "3) Gráfico"])
 # =========================
 with tab1:
     st.header("1) EDA Cuantitativo (numéricas)")
+
     if len(num_cols) == 0:
         st.warning("No se detectaron columnas numéricas.")
     else:
@@ -187,6 +194,7 @@ with tab1:
             default=num_cols[: min(3, len(num_cols))],
             key="out_cols",
         )
+
         if cols_for_outliers:
             out_summary = []
             for col in cols_for_outliers:
@@ -210,6 +218,7 @@ with tab1:
 # =========================
 with tab2:
     st.header("2) EDA Cualitativo (categóricas)")
+
     if len(cat_cols) == 0:
         st.info("No se detectaron columnas categóricas (texto/bool).")
     else:
@@ -251,7 +260,12 @@ with tab2:
             )
             st.dataframe(grp.head(30), use_container_width=True)
 
-            fig_grp = px.bar(grp.head(30), x=group_cat, y=f"{agg}({target_num})", title=f"{agg} de {target_num} por {group_cat}")
+            fig_grp = px.bar(
+                grp.head(30),
+                x=group_cat,
+                y=f"{agg}({target_num})",
+                title=f"{agg} de {target_num} por {group_cat}",
+            )
             st.plotly_chart(fig_grp, use_container_width=True)
 
 # =========================
@@ -259,6 +273,7 @@ with tab2:
 # =========================
 with tab3:
     st.header("3) EDA Gráfico (distribuciones, boxplots, relaciones)")
+
     if len(num_cols) == 0:
         st.warning("No hay columnas numéricas para graficar.")
     else:
@@ -288,12 +303,27 @@ with tab3:
             color_opt = ["(sin color)"] + cat_cols
             color_by = st.selectbox("Color por (opcional)", color_opt, key="scatter_color")
 
+            # FIX: Trendline OLS opcional y segura
+            add_trendline = st.checkbox("Agregar línea de tendencia (OLS)", value=False, key="trend_toggle")
+            trendline_arg = None
+
+            if add_trendline:
+                try:
+                    import statsmodels.api as sm  # noqa: F401
+                    if filtered_df[[x, y]].dropna().shape[0] >= 3:
+                        trendline_arg = "ols"
+                    else:
+                        st.info("No hay suficientes datos (mín. 3 puntos) para calcular la tendencia.")
+                except ModuleNotFoundError:
+                    st.warning("Para usar OLS debes instalar 'statsmodels'. Se mostrará el scatter sin tendencia.")
+                    trendline_arg = None
+
             fig_sc = px.scatter(
                 filtered_df,
                 x=x,
                 y=y,
                 color=None if color_by == "(sin color)" else color_by,
-                trendline="ols" if filtered_df[[x, y]].dropna().shape[0] >= 3 else None,
+                trendline=trendline_arg,
                 title=f"Scatter: {y} vs {x}",
             )
             st.plotly_chart(fig_sc, use_container_width=True)
@@ -303,7 +333,6 @@ with tab3:
             date_col = st.selectbox("Columna fecha", date_cols, key="date_col")
             y_ts = st.selectbox("Variable numérica", num_cols, key="y_ts")
 
-            # ordenar y agrupar por fecha (día)
             tmp = filtered_df[[date_col, y_ts]].dropna().sort_values(date_col)
             if tmp.empty:
                 st.info("No hay datos suficientes para la serie temporal con los filtros actuales.")
@@ -315,4 +344,4 @@ with tab3:
                 fig_ts = px.line(ts, x=date_col, y=y_ts, title=f"Serie temporal ({freq}) de {y_ts}")
                 st.plotly_chart(fig_ts, use_container_width=True)
 
-st.success("✅ App lista: EDA en 3 pestañas con filtros globales y visualizaciones dinámicas.")
+st.success("✅ App lista: EDA en 3 pestañas con filtros globales y visualizaciones dinámicas (sin errores de statsmodels).")
