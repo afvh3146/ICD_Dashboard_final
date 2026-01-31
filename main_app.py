@@ -7,14 +7,13 @@ import plotly.express as px
 # Configuración
 # -------------------------
 st.set_page_config(page_title="EDA - Streamlit", layout="wide")
-st.title("📊 EDA en Streamlit (3 pestañas: Cuantitativo, Cualitativo y Gráfico)")
-st.caption("Carga un CSV, define el tamaño de muestra y explora el dataset con análisis dinámico y controles.")
+st.title("📊 EDA en Streamlit (3 pestañas + Asistente de análisis)")
+st.caption("Carga un CSV, define el tamaño de muestra y explora el dataset con análisis dinámico y un asistente (Groq).")
 
 # -------------------------
 # Sidebar: carga de datos
 # -------------------------
 st.sidebar.header("1) Carga de datos")
-
 use_local = st.sidebar.checkbox("Usar archivo local energia_renovable.csv (si existe)", value=True)
 uploaded = st.sidebar.file_uploader("O sube un archivo CSV", type=["csv"])
 
@@ -81,7 +80,6 @@ date_cols = df_work.select_dtypes(include=["datetime64[ns]"]).columns.tolist()
 # Sidebar: toggles de secciones
 # -------------------------
 st.sidebar.header("4) Activar / desactivar secciones")
-
 show_head = st.sidebar.checkbox("Mostrar muestra (head)", value=True)
 show_dtypes = st.sidebar.checkbox("Mostrar tipos de datos", value=False)
 show_missing = st.sidebar.checkbox("Mostrar análisis de faltantes", value=True)
@@ -100,7 +98,7 @@ enable_scatter = st.sidebar.checkbox("Gráfico: scatter", value=True)
 enable_ts = st.sidebar.checkbox("Gráfico: serie temporal (si hay fecha)", value=False)
 
 # -------------------------
-# Filtros globales (aplican a TODO, sobre df_work)
+# Filtros globales
 # -------------------------
 st.sidebar.header("5) Filtros globales (opcional)")
 filtered_df = df_work.copy()
@@ -190,16 +188,13 @@ if show_missing:
             st.plotly_chart(fig_miss, use_container_width=True)
 
 # -------------------------
-# Tabs
+# Tabs (3 del EDA)
 # -------------------------
 tab1, tab2, tab3 = st.tabs(["1) Cuantitativo", "2) Cualitativo", "3) Gráfico"])
 
-# =========================
-# TAB 1: CUANTITATIVO
-# =========================
+# TAB 1
 with tab1:
     st.header("1) EDA Cuantitativo (numéricas)")
-
     if len(num_cols_f) == 0:
         st.warning("No se detectaron columnas numéricas en el dataset filtrado.")
     else:
@@ -259,12 +254,9 @@ with tab1:
                 )
                 st.dataframe(out_df, use_container_width=True)
 
-# =========================
-# TAB 2: CUALITATIVO
-# =========================
+# TAB 2
 with tab2:
     st.header("2) EDA Cualitativo (categóricas)")
-
     if len(cat_cols_f) == 0:
         st.info("No se detectaron columnas categóricas (texto/bool) en el dataset filtrado.")
     else:
@@ -287,7 +279,6 @@ with tab2:
             cat2 = st.selectbox("Segunda categórica", [c for c in cat_cols_f if c != cat], key="cat_second")
             ct = pd.crosstab(filtered_df[cat].fillna("NaN"), filtered_df[cat2].fillna("NaN"))
             st.dataframe(ct, use_container_width=True)
-
             fig_ct = px.imshow(ct, text_auto=True, aspect="auto", title=f"Mapa de calor: {cat} vs {cat2}")
             st.plotly_chart(fig_ct, use_container_width=True)
 
@@ -305,16 +296,12 @@ with tab2:
                 .rename(columns={target_num: f"{agg}({target_num})"})
             )
             st.dataframe(grp.head(30), use_container_width=True)
-
             fig_grp = px.bar(grp.head(30), x=group_cat, y=f"{agg}({target_num})", title=f"{agg} de {target_num} por {group_cat}")
             st.plotly_chart(fig_grp, use_container_width=True)
 
-# =========================
-# TAB 3: GRÁFICO
-# =========================
+# TAB 3
 with tab3:
     st.header("3) EDA Gráfico (distribuciones, boxplots, relaciones)")
-
     if len(num_cols_f) == 0:
         st.warning("No hay columnas numéricas para graficar con los filtros actuales.")
     else:
@@ -342,11 +329,9 @@ with tab3:
             st.subheader("Scatter (relación entre dos numéricas)")
             x = st.selectbox("Eje X", num_cols_f, index=0, key="scatter_x")
             y = st.selectbox("Eje Y", num_cols_f, index=1 if len(num_cols_f) > 1 else 0, key="scatter_y")
-
             color_opt = ["(sin color)"] + cat_cols_f
             color_by = st.selectbox("Color por (opcional)", color_opt, key="scatter_color")
 
-            # Trendline OLS opcional (no rompe si falta statsmodels)
             add_trendline = st.checkbox("Agregar línea de tendencia (OLS)", value=False, key="trend_toggle")
             trendline_arg = None
             if add_trendline:
@@ -381,160 +366,194 @@ with tab3:
             else:
                 freq = st.selectbox("Frecuencia", ["D (diario)", "W (semanal)", "M (mensual)"], key="ts_freq")
                 rule = {"D (diario)": "D", "W (semanal)": "W", "M (mensual)": "M"}[freq]
-
                 ts = tmp.set_index(date_col).resample(rule)[y_ts].mean().reset_index()
                 fig_ts = px.line(ts, x=date_col, y=y_ts, title=f"Serie temporal ({freq}) de {y_ts}")
                 st.plotly_chart(fig_ts, use_container_width=True)
 
 # ======================================================================
-# ASISTENTE DE ANÁLISIS (GROQ) - Sidebar
+# ASISTENTE DE ANÁLISIS (EN LA PÁGINA PRINCIPAL)
 # ======================================================================
+st.divider()
+st.header("🤖 Asistente de análisis (Groq + Llama 3.3)")
+st.caption("Pega tu API key en el sidebar. El asistente responde usando SOLO el dataset filtrado (sin inventar).")
+
+# Sidebar: controles del asistente
 st.sidebar.markdown("---")
-st.sidebar.header("🤖 Asistente de análisis (Groq + Llama 3.3)")
+st.sidebar.header("🤖 Asistente (Groq)")
 
-st.sidebar.caption(
-    "Pega tu API key de Groq para hacer preguntas sobre el dataset filtrado. "
-    "La key se usa solo en esta sesión."
-)
+api_key = st.sidebar.text_input("GROQ_API_KEY", type="password", help="No la subas al repo. Pégala aquí y listo.")
+model_name = st.sidebar.selectbox("Modelo", ["llama-3.3-70b-versatile"], index=0)
+temperature = st.sidebar.slider("Creatividad (temperature)", 0.0, 1.0, 0.25, 0.05)
+max_tokens = st.sidebar.slider("Máx tokens de respuesta", 256, 2048, 1200, 64)
+context_mode = st.sidebar.radio("Contexto", ["Compacto (recomendado)", "Extendido"], index=0)
 
-api_key = st.sidebar.text_input("GROQ_API_KEY", type="password", help="No la subas al repo. Solo pégala aquí.")
+# Botones rápidos (evita prompts gigantes)
+st.sidebar.subheader("Acciones rápidas")
+quick_col1, quick_col2 = st.sidebar.columns(2)
+btn_resumen = quick_col1.button("📌 Resumen")
+btn_insights = quick_col2.button("💡 4 insights")
+btn_proy = quick_col1.button("📈 Proyecciones")
+btn_negocio = quick_col2.button("💼 Preguntas negocio")
+btn_continuar = st.sidebar.button("➡️ Continuar respuesta", use_container_width=True)
+btn_limpiar = st.sidebar.button("🧹 Limpiar chat", use_container_width=True)
 
-# Opciones del asistente
-with st.sidebar.expander("Opciones del asistente", expanded=False):
-    model_name = st.selectbox(
-        "Modelo",
-        ["llama-3.3-70b-versatile"],
-        index=0,
-        help="Modelo recomendado para uso general.",
-    )
-    temperature = st.slider("Creatividad (temperature)", 0.0, 1.0, 0.3, 0.05)
-    max_tokens = st.slider("Máx tokens de respuesta", 128, 2048, 700, 64)
+def build_dataset_context(df_ctx: pd.DataFrame, num_cols_ctx, cat_cols_ctx, mode="compact") -> str:
+    """Contexto controlado para no comer tokens."""
+    # Tipos
+    dtypes = pd.DataFrame({"columna": df_ctx.columns, "dtype": df_ctx.dtypes.astype(str)})
 
-def build_dataset_context(df_ctx: pd.DataFrame, num_cols_ctx, cat_cols_ctx) -> str:
-    """Construye un contexto compacto del dataset para enviarlo al LLM."""
     # Faltantes
     miss = df_ctx.isna().sum()
     miss = miss[miss > 0].sort_values(ascending=False)
 
-    # Describe numérico (compacto)
+    # Describe numérico (limitado)
     if len(num_cols_ctx) > 0:
-        desc = df_ctx[num_cols_ctx].describe().T
-        desc["missing"] = df_ctx[num_cols_ctx].isna().sum()
+        cols_for_desc = num_cols_ctx[:8] if mode == "compact" else num_cols_ctx[:20]
+        desc = df_ctx[cols_for_desc].describe().T
+        desc["missing"] = df_ctx[cols_for_desc].isna().sum()
         desc = desc[["count", "mean", "std", "min", "25%", "50%", "75%", "max", "missing"]]
         desc_txt = desc.round(4).to_string()
     else:
         desc_txt = "No hay columnas numéricas."
 
-    # Frecuencias categóricas (top 5 por columna)
+    # Categóricas top
     cat_summaries = []
-    for c in cat_cols_ctx[:10]:  # limita para no inflar contexto
-        vc = df_ctx[c].astype("string").fillna("NaN").value_counts().head(5)
-        cat_summaries.append(f"\n- {c} (top 5):\n{vc.to_string()}")
+    cat_limit = 6 if mode == "compact" else 12
+    top_k = 5 if mode == "compact" else 10
+    for c in cat_cols_ctx[:cat_limit]:
+        vc = df_ctx[c].astype("string").fillna("NaN").value_counts().head(top_k)
+        cat_summaries.append(f"\n- {c} (top {top_k}):\n{vc.to_string()}")
     cat_txt = "\n".join(cat_summaries) if cat_summaries else "No hay columnas categóricas."
 
-    head_txt = df_ctx.head(10).to_string(index=False)
+    # Muestra
+    head_n = 6 if mode == "compact" else 12
+    head_txt = df_ctx.head(head_n).to_string(index=False)
 
     miss_txt = miss.to_string() if not miss.empty else "Sin faltantes."
+    dtypes_txt = dtypes.head(25).to_string(index=False) if mode == "compact" else dtypes.to_string(index=False)
 
     ctx = f"""
-DATASET CONTEXT (resumen)
-- Filas (filtrado): {df_ctx.shape[0]}
+CONTEXTO DEL DATASET (filtrado)
+- Filas: {df_ctx.shape[0]}
 - Columnas: {df_ctx.shape[1]}
-- Columnas numéricas: {num_cols_ctx}
-- Columnas categóricas: {cat_cols_ctx}
+- Numéricas: {num_cols_ctx}
+- Categóricas: {cat_cols_ctx}
 
-FALTANTES (columna -> cantidad):
+TIPOS (muestra):
+{dtypes_txt}
+
+FALTANTES:
 {miss_txt}
 
-DESCRIPTIVE STATS (numéricas):
+DESCRIPTIVE STATS (numéricas, subset):
 {desc_txt}
 
-CATEGÓRICAS (top 5 por columna, primeras 10 columnas categóricas):
+CATEGÓRICAS (frecuencias):
 {cat_txt}
 
-MUESTRA (primeras 10 filas):
+MUESTRA (primeras filas):
 {head_txt}
 """.strip()
     return ctx
 
-# Memoria del chat
-if "chat_messages" not in st.session_state:
-    st.session_state.chat_messages = [
-        {
-            "role": "assistant",
-            "content": "Hola. Soy tu asistente de análisis. Pregúntame sobre patrones, outliers, correlaciones, ideas de gráficos, hipótesis o conclusiones del dataset.",
-        }
-    ]
+def groq_chat(user_text: str, continuation: bool = False) -> str:
+    """Llama a Groq y devuelve respuesta. Usa el dataset filtrado como contexto."""
+    from groq import Groq
 
-# Render del chat en sidebar
-with st.sidebar.expander("Chat", expanded=True):
-    for m in st.session_state.chat_messages:
-        if m["role"] == "user":
-            st.markdown(f"**Tú:** {m['content']}")
-        else:
-            st.markdown(f"**Asistente:** {m['content']}")
+    mode = "compact" if context_mode.startswith("Compacto") else "extended"
+    context = build_dataset_context(filtered_df, num_cols_f, cat_cols_f, mode=mode)
 
-    user_prompt = st.text_area(
-        "Tu pregunta",
-        placeholder="Ej: Resume los hallazgos clave. ¿Qué variables parecen más importantes? ¿Qué gráficos recomiendas?",
-        height=80,
+    system_msg = (
+        "Eres un analista de datos experto. Responde en español, claro y estructurado. "
+        "NO inventes datos: usa únicamente el CONTEXTO del dataset proporcionado. "
+        "Si algo no se puede afirmar con el contexto, dilo explícitamente y sugiere cómo validarlo. "
+        "Evita causalidad; habla de asociaciones/relaciones."
     )
 
-    col_a, col_b = st.columns(2)
-    send = col_a.button("Enviar", use_container_width=True, disabled=(not api_key or not user_prompt.strip()))
-    clear = col_b.button("Limpiar chat", use_container_width=True)
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []
 
-    if clear:
-        st.session_state.chat_messages = [
-            {
-                "role": "assistant",
-                "content": "Chat reiniciado. Pregúntame lo que quieras sobre el dataset filtrado.",
-            }
-        ]
+    messages = [
+        {"role": "system", "content": system_msg},
+        {"role": "system", "content": context},
+    ]
+
+    # Mantener historial corto (para no comer tokens)
+    for m in st.session_state.chat_messages[-8:]:
+        messages.append({"role": m["role"], "content": m["content"]})
+
+    if continuation:
+        messages.append({"role": "user", "content": "Continúa EXACTAMENTE desde donde ibas. No repitas lo ya dicho. Termina el punto pendiente y concluye."})
+    else:
+        messages.append({"role": "user", "content": user_text})
+
+    client = Groq(api_key=api_key)
+    resp = client.chat.completions.create(
+        model=model_name,
+        messages=messages,
+        temperature=float(temperature),
+        max_tokens=int(max_tokens),
+    )
+    return resp.choices[0].message.content
+
+# Estado del chat
+if "chat_messages" not in st.session_state:
+    st.session_state.chat_messages = [
+        {"role": "assistant", "content": "Hola. Puedo ayudarte a resumir hallazgos, generar insights, proyecciones y preguntas de negocio usando el dataset filtrado."}
+    ]
+
+# Limpiar chat
+if btn_limpiar:
+    st.session_state.chat_messages = [
+        {"role": "assistant", "content": "Chat reiniciado. Haz tu pregunta sobre el dataset filtrado."}
+    ]
+    st.rerun()
+
+# Render del chat (en la página principal)
+for m in st.session_state.chat_messages:
+    with st.chat_message(m["role"]):
+        st.markdown(m["content"])
+
+# Entrada de chat (en la página principal)
+user_prompt = st.chat_input("Escribe tu pregunta (ej: 'Resume el análisis y sugiere recomendaciones')")
+
+# Resolver botones rápidos como prompts controlados
+quick_prompt = None
+if btn_resumen:
+    quick_prompt = "Dame un resumen ejecutivo del análisis en 7-10 líneas. Incluye 3 hallazgos clave y 2 riesgos."
+elif btn_insights:
+    quick_prompt = "Dame 4 insights accionables basados en los datos. Para cada insight: evidencia (qué se observa) + implicación."
+elif btn_proy:
+    quick_prompt = "Dame proyecciones/escenarios (optimista, base, pesimista) basados en tendencias observables del dataset. Si no es posible proyectar con certeza, explica qué variable o modelo faltaría."
+elif btn_negocio:
+    quick_prompt = "Propón 3 preguntas de negocio relevantes para este dataset y respóndelas con evidencia (sin inventar). Cierra con 3 recomendaciones."
+
+# Ejecutar el chat si hay prompt
+if api_key and (user_prompt or quick_prompt):
+    text = user_prompt if user_prompt else quick_prompt
+
+    st.session_state.chat_messages.append({"role": "user", "content": text})
+    with st.chat_message("user"):
+        st.markdown(text)
+
+    try:
+        answer = groq_chat(text, continuation=False)
+        st.session_state.chat_messages.append({"role": "assistant", "content": answer})
+        with st.chat_message("assistant"):
+            st.markdown(answer)
+    except Exception as e:
+        st.error(f"Error al llamar Groq: {e}")
+
+# Continuar (si se cortó)
+if api_key and btn_continuar:
+    try:
+        answer = groq_chat("", continuation=True)
+        st.session_state.chat_messages.append({"role": "assistant", "content": answer})
         st.rerun()
+    except Exception as e:
+        st.error(f"Error al continuar: {e}")
 
-    if send:
-        try:
-            from groq import Groq  # SDK oficial de Groq :contentReference[oaicite:2]{index=2}
+if not api_key:
+    st.info("Para usar el asistente, pega tu GROQ_API_KEY en el sidebar (se usa solo en esta sesión).")
 
-            client = Groq(api_key=api_key)
-
-            # Contexto del dataset filtrado (para que el modelo responda con base en datos)
-            context = build_dataset_context(filtered_df, num_cols_f, cat_cols_f)
-
-            system_msg = (
-                "Eres un analista de datos experto. Responde con claridad, en español, "
-                "sin inventar datos: usa SOLO el contexto del dataset que te doy. "
-                "Si falta información, dilo y sugiere qué gráfico/consulta harías. "
-                "Entrega respuestas accionables (insights, hipótesis, recomendaciones de EDA)."
-            )
-
-            # Guardar mensaje del usuario
-            st.session_state.chat_messages.append({"role": "user", "content": user_prompt.strip()})
-
-            # Preparar mensajes para Groq Chat Completions
-            messages = [
-                {"role": "system", "content": system_msg},
-                {"role": "system", "content": context},
-            ]
-
-            # Mantener algo de historial (últimos 6)
-            for m in st.session_state.chat_messages[-6:]:
-                messages.append({"role": m["role"], "content": m["content"]})
-
-            resp = client.chat.completions.create(
-                model=model_name,  # llama-3.3-70b-versatile :contentReference[oaicite:3]{index=3}
-                messages=messages,
-                temperature=float(temperature),
-                max_tokens=int(max_tokens),
-            )
-
-            answer = resp.choices[0].message.content
-            st.session_state.chat_messages.append({"role": "assistant", "content": answer})
-
-            st.rerun()
-
-        except Exception as e:
-            st.error(f"Error al llamar Groq: {e}")
-
-st.success("✅ App lista: muestreo + checkboxes + 3 pestañas + asistente Groq.")
+st.success("✅ App lista: EDA en 3 pestañas + asistente de análisis estable (no se corta, y tiene botón de continuar).")
