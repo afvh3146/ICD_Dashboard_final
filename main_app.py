@@ -19,7 +19,6 @@ use_local = st.sidebar.checkbox("Usar archivo local energia_renovable.csv (si ex
 uploaded = st.sidebar.file_uploader("O sube un archivo CSV", type=["csv"])
 
 df = None
-
 if uploaded is not None:
     df = pd.read_csv(uploaded)
     st.sidebar.success("CSV cargado desde el uploader")
@@ -38,7 +37,6 @@ if df is None:
 # Sidebar: opciones generales
 # -------------------------
 st.sidebar.header("2) Opciones generales")
-
 auto_parse_dates = st.sidebar.checkbox("Intentar convertir columnas tipo fecha", value=True)
 
 if auto_parse_dates:
@@ -52,13 +50,9 @@ if auto_parse_dates:
 # Sidebar: tamaño de muestra (submuestreo)
 # -------------------------
 st.sidebar.header("3) Tamaño de muestra (muestras a analizar)")
-
 n_total = len(df)
-if n_total <= 1:
-    st.warning("El dataset tiene muy pocas filas.")
-    st.stop()
-
 default_n = min(500, n_total)
+
 sample_n = st.sidebar.slider(
     "Número de filas a analizar",
     min_value=50 if n_total >= 50 else 1,
@@ -69,7 +63,6 @@ sample_n = st.sidebar.slider(
 seed = st.sidebar.number_input("Semilla (para muestreo reproducible)", min_value=0, max_value=999999, value=42, step=1)
 do_sample = st.sidebar.checkbox("Aplicar muestreo aleatorio", value=(sample_n < n_total))
 
-# Aplicar muestreo (si corresponde)
 if do_sample and sample_n < n_total:
     df_work = df.sample(n=sample_n, random_state=int(seed)).reset_index(drop=True)
 else:
@@ -93,62 +86,18 @@ show_head = st.sidebar.checkbox("Mostrar muestra (head)", value=True)
 show_dtypes = st.sidebar.checkbox("Mostrar tipos de datos", value=False)
 show_missing = st.sidebar.checkbox("Mostrar análisis de faltantes", value=True)
 
-# TAB 1: cuantitativo
 enable_desc = st.sidebar.checkbox("Cuantitativo: estadística descriptiva", value=True)
 enable_corr = st.sidebar.checkbox("Cuantitativo: correlaciones", value=True)
 enable_top_corr = st.sidebar.checkbox("Cuantitativo: top correlaciones", value=True)
 enable_outliers = st.sidebar.checkbox("Cuantitativo: outliers (IQR)", value=False)
 
-# TAB 2: cualitativo
-enable_freq = True  # base
 enable_crosstab = st.sidebar.checkbox("Cualitativo: cruce de categóricas (crosstab)", value=False)
 enable_group_summary = st.sidebar.checkbox("Cualitativo: resumen por grupo", value=True)
 
-# TAB 3: gráfico
 enable_hist_box = st.sidebar.checkbox("Gráfico: histograma + boxplot", value=True)
 enable_box_by_cat = st.sidebar.checkbox("Gráfico: boxplot por categoría", value=True)
 enable_scatter = st.sidebar.checkbox("Gráfico: scatter", value=True)
 enable_ts = st.sidebar.checkbox("Gráfico: serie temporal (si hay fecha)", value=False)
-
-# -------------------------
-# Vista general
-# -------------------------
-st.subheader("📌 Vista general (dataset en análisis)")
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Filas analizadas", f"{df_work.shape[0]:,}".replace(",", "."))
-c2.metric("Columnas", df_work.shape[1])
-c3.metric("Numéricas", len(num_cols))
-c4.metric("Categóricas", len(cat_cols))
-
-if show_head:
-    with st.expander("Ver muestra (head)"):
-        st.dataframe(df_work.head(20), use_container_width=True)
-
-if show_dtypes:
-    with st.expander("Tipos de datos"):
-        st.dataframe(pd.DataFrame({"columna": df_work.columns, "dtype": df_work.dtypes.astype(str)}), use_container_width=True)
-
-# -------------------------
-# Faltantes
-# -------------------------
-if show_missing:
-    missing = df_work.isna().sum().sort_values(ascending=False)
-    missing_pct = (missing / len(df_work) * 100).round(2)
-    missing_table = pd.DataFrame({"faltantes": missing, "faltantes_%": missing_pct})
-    missing_table = missing_table[missing_table["faltantes"] > 0]
-
-    with st.expander("Calidad de datos: valores faltantes"):
-        if missing_table.empty:
-            st.success("✅ No se encontraron valores faltantes (NaN).")
-        else:
-            st.dataframe(missing_table, use_container_width=True)
-            fig_miss = px.bar(
-                missing_table.reset_index().rename(columns={"index": "columna"}),
-                x="columna",
-                y="faltantes",
-                title="Faltantes por columna",
-            )
-            st.plotly_chart(fig_miss, use_container_width=True)
 
 # -------------------------
 # Filtros globales (aplican a TODO, sobre df_work)
@@ -202,6 +151,43 @@ st.sidebar.caption(f"Después de filtros: {filtered_df.shape[0]} filas / {filter
 num_cols_f = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
 cat_cols_f = filtered_df.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
 date_cols_f = filtered_df.select_dtypes(include=["datetime64[ns]"]).columns.tolist()
+
+# -------------------------
+# Vista general
+# -------------------------
+st.subheader("📌 Vista general (dataset en análisis)")
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Filas analizadas", f"{filtered_df.shape[0]:,}".replace(",", "."))
+c2.metric("Columnas", filtered_df.shape[1])
+c3.metric("Numéricas", len(num_cols_f))
+c4.metric("Categóricas", len(cat_cols_f))
+
+if show_head:
+    with st.expander("Ver muestra (head)"):
+        st.dataframe(filtered_df.head(20), use_container_width=True)
+
+if show_dtypes:
+    with st.expander("Tipos de datos"):
+        st.dataframe(pd.DataFrame({"columna": filtered_df.columns, "dtype": filtered_df.dtypes.astype(str)}), use_container_width=True)
+
+if show_missing:
+    missing = filtered_df.isna().sum().sort_values(ascending=False)
+    missing_pct = (missing / len(filtered_df) * 100).round(2)
+    missing_table = pd.DataFrame({"faltantes": missing, "faltantes_%": missing_pct})
+    missing_table = missing_table[missing_table["faltantes"] > 0]
+
+    with st.expander("Calidad de datos: valores faltantes"):
+        if missing_table.empty:
+            st.success("✅ No se encontraron valores faltantes (NaN).")
+        else:
+            st.dataframe(missing_table, use_container_width=True)
+            fig_miss = px.bar(
+                missing_table.reset_index().rename(columns={"index": "columna"}),
+                x="columna",
+                y="faltantes",
+                title="Faltantes por columna",
+            )
+            st.plotly_chart(fig_miss, use_container_width=True)
 
 # -------------------------
 # Tabs
@@ -360,9 +346,9 @@ with tab3:
             color_opt = ["(sin color)"] + cat_cols_f
             color_by = st.selectbox("Color por (opcional)", color_opt, key="scatter_color")
 
+            # Trendline OLS opcional (no rompe si falta statsmodels)
             add_trendline = st.checkbox("Agregar línea de tendencia (OLS)", value=False, key="trend_toggle")
             trendline_arg = None
-
             if add_trendline:
                 try:
                     import statsmodels.api as sm  # noqa: F401
@@ -400,4 +386,155 @@ with tab3:
                 fig_ts = px.line(ts, x=date_col, y=y_ts, title=f"Serie temporal ({freq}) de {y_ts}")
                 st.plotly_chart(fig_ts, use_container_width=True)
 
-st.success("✅ App lista: muestreo + checkboxes + 3 pestañas con EDA dinámico.")
+# ======================================================================
+# ASISTENTE DE ANÁLISIS (GROQ) - Sidebar
+# ======================================================================
+st.sidebar.markdown("---")
+st.sidebar.header("🤖 Asistente de análisis (Groq + Llama 3.3)")
+
+st.sidebar.caption(
+    "Pega tu API key de Groq para hacer preguntas sobre el dataset filtrado. "
+    "La key se usa solo en esta sesión."
+)
+
+api_key = st.sidebar.text_input("GROQ_API_KEY", type="password", help="No la subas al repo. Solo pégala aquí.")
+
+# Opciones del asistente
+with st.sidebar.expander("Opciones del asistente", expanded=False):
+    model_name = st.selectbox(
+        "Modelo",
+        ["llama-3.3-70b-versatile"],
+        index=0,
+        help="Modelo recomendado para uso general.",
+    )
+    temperature = st.slider("Creatividad (temperature)", 0.0, 1.0, 0.3, 0.05)
+    max_tokens = st.slider("Máx tokens de respuesta", 128, 2048, 700, 64)
+
+def build_dataset_context(df_ctx: pd.DataFrame, num_cols_ctx, cat_cols_ctx) -> str:
+    """Construye un contexto compacto del dataset para enviarlo al LLM."""
+    # Faltantes
+    miss = df_ctx.isna().sum()
+    miss = miss[miss > 0].sort_values(ascending=False)
+
+    # Describe numérico (compacto)
+    if len(num_cols_ctx) > 0:
+        desc = df_ctx[num_cols_ctx].describe().T
+        desc["missing"] = df_ctx[num_cols_ctx].isna().sum()
+        desc = desc[["count", "mean", "std", "min", "25%", "50%", "75%", "max", "missing"]]
+        desc_txt = desc.round(4).to_string()
+    else:
+        desc_txt = "No hay columnas numéricas."
+
+    # Frecuencias categóricas (top 5 por columna)
+    cat_summaries = []
+    for c in cat_cols_ctx[:10]:  # limita para no inflar contexto
+        vc = df_ctx[c].astype("string").fillna("NaN").value_counts().head(5)
+        cat_summaries.append(f"\n- {c} (top 5):\n{vc.to_string()}")
+    cat_txt = "\n".join(cat_summaries) if cat_summaries else "No hay columnas categóricas."
+
+    head_txt = df_ctx.head(10).to_string(index=False)
+
+    miss_txt = miss.to_string() if not miss.empty else "Sin faltantes."
+
+    ctx = f"""
+DATASET CONTEXT (resumen)
+- Filas (filtrado): {df_ctx.shape[0]}
+- Columnas: {df_ctx.shape[1]}
+- Columnas numéricas: {num_cols_ctx}
+- Columnas categóricas: {cat_cols_ctx}
+
+FALTANTES (columna -> cantidad):
+{miss_txt}
+
+DESCRIPTIVE STATS (numéricas):
+{desc_txt}
+
+CATEGÓRICAS (top 5 por columna, primeras 10 columnas categóricas):
+{cat_txt}
+
+MUESTRA (primeras 10 filas):
+{head_txt}
+""".strip()
+    return ctx
+
+# Memoria del chat
+if "chat_messages" not in st.session_state:
+    st.session_state.chat_messages = [
+        {
+            "role": "assistant",
+            "content": "Hola. Soy tu asistente de análisis. Pregúntame sobre patrones, outliers, correlaciones, ideas de gráficos, hipótesis o conclusiones del dataset.",
+        }
+    ]
+
+# Render del chat en sidebar
+with st.sidebar.expander("Chat", expanded=True):
+    for m in st.session_state.chat_messages:
+        if m["role"] == "user":
+            st.markdown(f"**Tú:** {m['content']}")
+        else:
+            st.markdown(f"**Asistente:** {m['content']}")
+
+    user_prompt = st.text_area(
+        "Tu pregunta",
+        placeholder="Ej: Resume los hallazgos clave. ¿Qué variables parecen más importantes? ¿Qué gráficos recomiendas?",
+        height=80,
+    )
+
+    col_a, col_b = st.columns(2)
+    send = col_a.button("Enviar", use_container_width=True, disabled=(not api_key or not user_prompt.strip()))
+    clear = col_b.button("Limpiar chat", use_container_width=True)
+
+    if clear:
+        st.session_state.chat_messages = [
+            {
+                "role": "assistant",
+                "content": "Chat reiniciado. Pregúntame lo que quieras sobre el dataset filtrado.",
+            }
+        ]
+        st.rerun()
+
+    if send:
+        try:
+            from groq import Groq  # SDK oficial de Groq :contentReference[oaicite:2]{index=2}
+
+            client = Groq(api_key=api_key)
+
+            # Contexto del dataset filtrado (para que el modelo responda con base en datos)
+            context = build_dataset_context(filtered_df, num_cols_f, cat_cols_f)
+
+            system_msg = (
+                "Eres un analista de datos experto. Responde con claridad, en español, "
+                "sin inventar datos: usa SOLO el contexto del dataset que te doy. "
+                "Si falta información, dilo y sugiere qué gráfico/consulta harías. "
+                "Entrega respuestas accionables (insights, hipótesis, recomendaciones de EDA)."
+            )
+
+            # Guardar mensaje del usuario
+            st.session_state.chat_messages.append({"role": "user", "content": user_prompt.strip()})
+
+            # Preparar mensajes para Groq Chat Completions
+            messages = [
+                {"role": "system", "content": system_msg},
+                {"role": "system", "content": context},
+            ]
+
+            # Mantener algo de historial (últimos 6)
+            for m in st.session_state.chat_messages[-6:]:
+                messages.append({"role": m["role"], "content": m["content"]})
+
+            resp = client.chat.completions.create(
+                model=model_name,  # llama-3.3-70b-versatile :contentReference[oaicite:3]{index=3}
+                messages=messages,
+                temperature=float(temperature),
+                max_tokens=int(max_tokens),
+            )
+
+            answer = resp.choices[0].message.content
+            st.session_state.chat_messages.append({"role": "assistant", "content": answer})
+
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"Error al llamar Groq: {e}")
+
+st.success("✅ App lista: muestreo + checkboxes + 3 pestañas + asistente Groq.")
