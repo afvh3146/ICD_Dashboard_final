@@ -4,4 +4,4 @@ numpy
 matplotlib
 plotly
 scipy
-
+groq
